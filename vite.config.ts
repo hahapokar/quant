@@ -1,10 +1,11 @@
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 import { defineConfig } from 'vite';
 
 export default defineConfig(() => {
   return {
-    plugins: [react()], // 👈 删掉 tailwindcss()
+    plugins: [react(), tailwindcss()],
     base: '/quant/',
 
     resolve: {
