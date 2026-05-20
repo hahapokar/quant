@@ -77,6 +77,13 @@ export default function App() {
   // 模拟情绪冲击的文本状态反馈
   const [shockMessage, setShockMessage] = useState<string>("");
 
+  // 交易时段状态
+  const [tradingStatus, setTradingStatus] = useState<{ trading: boolean; session: string; session_label: string; current_time: string } | null>(null);
+  // 非交易时段是否至少加载过一次数据
+  const [hasInitialLoad, setHasInitialLoad] = useState<boolean>(false);
+  // 后端连接状态
+  const [connectionError, setConnectionError] = useState<boolean>(false);
+
   // 交易纪律打卡模块状态
   const [tradeLogs, setTradeLogs] = useState<TradeLog[]>([]);
   const [selectedBondCode, setSelectedBondCode] = useState<string>("");
@@ -239,36 +246,66 @@ export default function App() {
       if (json.status === "success" && json.data) {
         setSignals(json.data);
         setLastUpdated(json.last_updated);
+        setConnectionError(false);
       }
     } catch (err) {
       console.error("连接分析系统失败:", err);
+      setConnectionError(true);
     } finally {
       setLoading(false);
     }
   };
 
-  // 1. 初始化拉取：参数变动时拉取最新状态面部
+  // 从后端获取当前交易时段状态
+  const fetchTradingStatus = async () => {
+    try {
+      const res = await fetch("/api/trading-status");
+      const json = await res.json();
+      if (json.status === "success" && json.data) {
+        setTradingStatus(json.data);
+      }
+    } catch (err) {
+      console.error("获取交易时段状态失败:", err);
+    }
+  };
+
+  // 1. 初始化拉取：参数变动时拉取最新状态面部，同时获取交易时段状态
   useEffect(() => {
     fetchSignals(period, stdDev, false);
-    // 重置倒计秒数
+    fetchTradingStatus();
     setCountdown(10);
   }, [period, stdDev]);
 
-  // 2. 10秒自动刷新定时器
+  // 2. 按交易时段智能调整刷新频率
+  //    交易中：每10秒刷新一次    非交易时段：每60秒刷新一次（降低无效轮询）
   useEffect(() => {
+    const isTrading = tradingStatus?.trading ?? false;
+    const intervalSeconds = isTrading ? 10 : 60;
+
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          // 到秒时，触发无缝静默刷新并重置
+          // 非交易时段首次加载后，不再静默刷新
+          if (!isTrading && hasInitialLoad) {
+            return intervalSeconds;
+          }
           fetchSignals(period, stdDev, true);
-          return 10;
+          if (!hasInitialLoad) setHasInitialLoad(true);
+          return intervalSeconds;
         }
         return prev - 1;
       });
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [period, stdDev]);
+  }, [period, stdDev, tradingStatus, hasInitialLoad]);
+
+  // 3. 周期性获取交易时段状态（每60秒）
+  useEffect(() => {
+    fetchTradingStatus();
+    const statusInterval = setInterval(fetchTradingStatus, 60000);
+    return () => clearInterval(statusInterval);
+  }, []);
 
   // 模拟行情波动冲击接口
   const handleSimulateShock = async (type: "bull" | "bear" | "spike") => {
@@ -483,9 +520,20 @@ export default function App() {
           <div className="flex items-center gap-3 self-end sm:self-auto">
             <div className="text-right flex items-center gap-2 bg-slate-100/80 px-3 py-1.5 rounded-lg border border-slate-200">
               <Clock className="w-3.5 h-3.5 text-slate-400" />
-              <span className="text-xs font-mono text-slate-600">
-                每 10 秒刷新：<strong className="text-slate-900 font-bold">{countdown}s</strong>
-              </span>
+              {tradingStatus?.trading ? (
+                <span className="text-xs font-mono text-slate-600">
+                  盘中交易 | 每 10 秒刷新：<strong className="text-slate-900 font-bold">{countdown}s</strong>
+                </span>
+              ) : (
+                <span className="text-xs font-mono text-slate-500">
+                  市场休市
+                  {tradingStatus && (
+                    <span className="text-slate-400 ml-1">({tradingStatus.session_label})</span>
+                  )}
+                  <span className="text-slate-400 ml-1">| 下轮检测：</span>
+                  <strong className="text-slate-600 font-bold">{countdown}s</strong>
+                </span>
+              )}
               <span className="text-slate-300">|</span>
               <span className="text-xs text-slate-500 font-mono">
                 更新: {lastUpdated || "--:--:--"}
@@ -531,10 +579,17 @@ export default function App() {
             
             <div className="flex items-center gap-2 text-xs">
               <span className="text-slate-400">执行机制:</span>
-              <span className="flex items-center gap-1.5 font-bold text-green-400 bg-green-500/10 px-2.5 py-0.5 rounded border border-green-500/20">
-                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
-                T+0 实时撮合中
-              </span>
+              {tradingStatus?.trading ? (
+                <span className="flex items-center gap-1.5 font-bold text-green-400 bg-green-500/10 px-2.5 py-0.5 rounded border border-green-500/20">
+                  <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
+                  T+0 实时撮合中
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 font-bold text-slate-400 bg-slate-500/10 px-2.5 py-0.5 rounded border border-slate-500/20">
+                  <span className="w-1.5 h-1.5 bg-slate-400 rounded-full"></span>
+                  市场休市 | 仿真演示
+                </span>
+              )}
             </div>
           </div>
 
@@ -797,7 +852,7 @@ export default function App() {
                     
                     {loading ? (
                       <tr>
-                        <td colSpan={5} className="py-16 text-center">
+                        <td colSpan={6} className="py-16 text-center">
                           <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
                             <RefreshCw className="w-6 h-6 animate-spin text-red-500" />
                             <span className="text-xs font-medium">正在拉取活跃可转债布林波动带判定序列...</span>
@@ -806,10 +861,18 @@ export default function App() {
                       </tr>
                     ) : filteredBonds.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="py-16 text-center">
-                          <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
-                            <span className="text-xs">未找到符合搜索或过滤条件的标的</span>
-                          </div>
+                        <td colSpan={6} className="py-16 text-center">
+                          {connectionError ? (
+                            <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
+                              <AlertCircle className="w-6 h-6 text-red-400" />
+                              <span className="text-xs font-medium text-red-500">无法连接到量化分析后端服务</span>
+                              <span className="text-[10px] text-slate-400">请确认后端服务器已启动 (如: npm run dev 或 python main.py)</span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
+                              <span className="text-xs">未找到符合搜索或过滤条件的标的</span>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ) : (

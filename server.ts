@@ -143,11 +143,43 @@ function simulateTradingTicks() {
   });
 }
 
+// A股交易时间判断（北京时间 UTC+8）
+function isAStockTradingHours(): { trading: boolean; session: string } {
+  const beijingTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
+  const day = beijingTime.getDay();
+  const hours = beijingTime.getHours();
+  const minutes = beijingTime.getMinutes();
+  const currentMinutes = hours * 60 + minutes;
+
+  if (day === 0 || day === 6) {
+    return { trading: false, session: "WEEKEND" };
+  }
+
+  if (currentMinutes >= 9 * 60 + 25 && currentMinutes <= 11 * 60 + 30) {
+    return { trading: true, session: "MORNING" };
+  }
+
+  if (currentMinutes > 11 * 60 + 30 && currentMinutes < 13 * 60) {
+    return { trading: false, session: "LUNCH_BREAK" };
+  }
+
+  if (currentMinutes >= 13 * 60 && currentMinutes <= 15 * 60) {
+    return { trading: true, session: "AFTERNOON" };
+  }
+
+  return { trading: false, session: "CLOSED" };
+}
+
 // 初始化
 initializeSimulatedDatabase();
 
-// 每 3.5 秒模拟一次交易变动（让仪表盘极其富有生命力且极其逼真）
-setInterval(simulateTradingTicks, 3500);
+// 只在模拟交易时段更新tick，避免非交易时间无效轮询
+setInterval(() => {
+  const status = isAStockTradingHours();
+  if (status.trading) {
+    simulateTradingTicks();
+  }
+}, 3500);
 
 // ==========================================
 // API 路由
@@ -344,6 +376,28 @@ app.post("/api/paper/trade", (req, res) => {
   } catch (e: any) {
     res.status(500).json({ status: "error", message: e.message });
   }
+});
+
+// GET /api/trading-status - 查询当前交易时段状态
+app.get("/api/trading-status", (req, res) => {
+  const status = isAStockTradingHours();
+  const beijingTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
+  const sessionLabels: Record<string, string> = {
+    MORNING: "早盘交易中 (09:25-11:30)",
+    AFTERNOON: "下午盘交易中 (13:00-15:00)",
+    LUNCH_BREAK: "午间休市 (11:30-13:00)",
+    CLOSED: "已收盘",
+    WEEKEND: "周末休市",
+  };
+  res.json({
+    status: "success",
+    data: {
+      trading: status.trading,
+      session: status.session,
+      session_label: sessionLabels[status.session] || "未知",
+      current_time: beijingTime.toLocaleTimeString("zh-CN", { hour12: false }),
+    },
+  });
 });
 
 // POST /api/paper/reset - 重置模拟盘
