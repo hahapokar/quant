@@ -1,0 +1,6 @@
+{
+  "name": "可转债量化决策系统",
+  "description": "基于成交额降序活跃可转债的日内高频 VWAP 与 20 分钟布林带 (Bollinger) 实盘短线多空辅助决策后端及控制中心",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

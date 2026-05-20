@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+@keyframes breathing-red {
+  0%, 100% {
+    background-color: rgba(239, 68, 68, 0.03);
+  }
+  50% {
+    background-color: rgba(239, 68, 68, 0.12);
+  }
+}
+
+@keyframes breathing-green {
+  0%, 100% {
+    background-color: rgba(16, 185, 129, 0.03);
+  }
+  50% {
+    background-color: rgba(16, 185, 129, 0.12);
+  }
+}
+
+.row-alert-buy {
+  animation: breathing-red 2.5s infinite ease-in-out;
+}
+
+.row-alert-sell {
+  animation: breathing-green 2.5s infinite ease-in-out;
+}
