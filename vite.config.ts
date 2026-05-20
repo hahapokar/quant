@@ -6,22 +6,25 @@ import { defineConfig } from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    base: '/quant/', // 👈 只加了这一行，GitHub Pages 必须加
+
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
     },
+
     server: {
-      // 👇 关键：加上代理（把 /api 请求转发到后端）
+      // 你的代理（保留不动）
       proxy: {
         '/api': {
-          target: 'http://localhost:3000',  // 你的后端地址
+          target: 'http://localhost:3000',
           changeOrigin: true,
           secure: false,
         },
       },
 
-      // HMR 设置（不用动）
+      // HMR 设置（保留不动）
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
